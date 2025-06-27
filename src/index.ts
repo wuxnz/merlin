@@ -94,7 +94,20 @@ function formatKeyValue(key: string, value: any, depth = 0): string {
 
   if (Array.isArray(value)) {
     if (value.length === 0) return "";
-    const children = value
+
+    const filtered = value.filter((v) => {
+      return !(
+        typeof v === "object" &&
+        v !== null &&
+        "name" in v &&
+        "amount" in v &&
+        (v as any).amount === 0
+      );
+    });
+
+    if (filtered.length === 0) return "";
+
+    const children = filtered
       .map((v) => formatKeyValue("-", v, depth + 1))
       .filter(Boolean)
       .join("\n");
