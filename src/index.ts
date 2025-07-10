@@ -273,7 +273,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setColor(0x6f11db)
           .setTitle(result.name)
           .setDescription(`${result.description}\n\n${formattedDetails}`)
-          .setImage(result.image)
+          .setImage(result.icon)
           .setFooter({ text: "Merlin go brrr" });
         await interaction.reply({ embeds: [embed] });
       }

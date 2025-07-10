@@ -66,9 +66,22 @@ class PureEldenRing {
       let page = 1;
       let hasMorePages = category.pagination;
       while (hasMorePages) {
-        const response = await axios.get(
-          `${this.baseUrl}/${category.category}/page/${page}`
+        console.log(
+          `Fetching ${category.category} page ${page}: ${this.baseUrl}/${category.category}/page/${page}`
         );
+        var response;
+        try {
+          response = await axios.get(
+            `${this.baseUrl}/${category.category}/page/${page}`
+          );
+        } catch (err: any) {
+          console.error(
+            `Error fetching ${category.category} page ${page}: ${this.baseUrl}/${category.category}/page/${page}`,
+            err
+          );
+          hasMorePages = false;
+          break;
+        }
         console.log(
           `${category.category} page ${page} fetched & saved (${response.data.length} items)`
         );
@@ -117,25 +130,61 @@ class PureEldenRing {
 
         if (items.length === 0) {
           hasMorePages = false;
-        } else {
-          insertMany(items, category.category);
+        } else if (
+          page > 1 &&
+          // check if any items are the same as an item from the last page
+          items.every((item) =>
+            this.db
+              .prepare("SELECT * FROM items WHERE name = ? AND category = ?")
+              .get(item.name, item.data, category.category)
+          )
+        ) {
           console.log(
-            `${category.category} fetched & saved (${items.length} items)`
+            `Items from page ${page} are identical to items from the last page. Skipping.`
           );
-          page++;
+          hasMorePages = false;
+          break;
+        } else {
+          if (hasMorePages) {
+            insertMany(items, category.category);
+            console.log(
+              `${category.category} fetched & saved (${items.length} items)`
+            );
+            page++;
+          }
         }
       }
     }
+    console.log("Database population complete.");
   }
 
   async search(query: string): Promise<Record<string, any>> {
-    const rows = this.db
-      .prepare(`SELECT name, data FROM items WHERE name LIKE ?`)
-      .all(`%${query}%`) as { name: string; data: string }[];
-    if (rows.length === 0) {
+    const rows = this.db.prepare(`SELECT name, data FROM items`).all() as {
+      name: string;
+      data: string;
+    }[];
+
+    type Candidate = { item: any; distance: number };
+
+    const candidates: Candidate[] = rows.map(
+      (row: { name: string; data: string }) => {
+        const item = JSON.parse(row.data);
+        const distance = levenshteinDistance(
+          query.toLowerCase(),
+          row.name.toLowerCase()
+        );
+        return { item, distance };
+      }
+    );
+
+    if (candidates.length === 0) {
       throw new Error("Database is empty. Have you run createDatabase()?");
     }
-    return rows[0];
+
+    const best = candidates.sort(
+      (a: Candidate, b: Candidate) => a.distance - b.distance
+    )[0];
+    return best.item;
   }
 }
 

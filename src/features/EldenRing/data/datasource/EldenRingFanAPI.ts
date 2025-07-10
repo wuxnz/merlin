@@ -81,44 +81,44 @@ class EldenRingFanAPI {
     }
   }
 
-  // async search(query: string): Promise<Record<string, any>> {
-  //   const rows = this.db.prepare(`SELECT name, data FROM items`).all() as {
-  //     name: string;
-  //     data: string;
-  //   }[];
-
-  //   type Candidate = { item: any; distance: number };
-
-  //   const candidates: Candidate[] = rows.map(
-  //     (row: { name: string; data: string }) => {
-  //       const item = JSON.parse(row.data);
-  //       const distance = levenshteinDistance(
-  //         query.toLowerCase(),
-  //         row.name.toLowerCase()
-  //       );
-  //       return { item, distance };
-  //     }
-  //   );
-
-  //   if (candidates.length === 0) {
-  //     throw new Error("Database is empty. Have you run createDatabase()?");
-  //   }
-
-  //   const best = candidates.sort(
-  //     (a: Candidate, b: Candidate) => a.distance - b.distance
-  //   )[0];
-  //   return best.item;
-  // }
-
   async search(query: string): Promise<Record<string, any>> {
-    const rows = this.db
-      .prepare(`SELECT name, data FROM items WHERE name LIKE ?`)
-      .all(`%${query}%`) as { name: string; data: string }[];
-    if (rows.length === 0) {
+    const rows = this.db.prepare(`SELECT name, data FROM items`).all() as {
+      name: string;
+      data: string;
+    }[];
+
+    type Candidate = { item: any; distance: number };
+
+    const candidates: Candidate[] = rows.map(
+      (row: { name: string; data: string }) => {
+        const item = JSON.parse(row.data);
+        const distance = levenshteinDistance(
+          query.toLowerCase(),
+          row.name.toLowerCase()
+        );
+        return { item, distance };
+      }
+    );
+
+    if (candidates.length === 0) {
       throw new Error("Database is empty. Have you run createDatabase()?");
     }
-    return rows[0];
+
+    const best = candidates.sort(
+      (a: Candidate, b: Candidate) => a.distance - b.distance
+    )[0];
+    return best.item;
   }
+
+  // async search(query: string): Promise<Record<string, any>> {
+  //   const rows = this.db
+  //     .prepare(`SELECT name, data FROM items WHERE name LIKE ?`)
+  //     .all(`%${query}%`) as { name: string; data: string }[];
+  //   if (rows.length === 0) {
+  //     throw new Error("Database is empty. Have you run createDatabase()?");
+  //   }
+  //   return rows[0];
+  // }
 }
 
 export default EldenRingFanAPI;
