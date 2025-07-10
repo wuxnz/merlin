@@ -12,6 +12,7 @@ import fs from "fs";
 import Database from "better-sqlite3";
 
 import EldenRingFanAPI from "./features/EldenRing/data/datasource/EldenRingFanAPI";
+import PureEldenRing from "./features/EldenRing/data/datasource/PureEldenRing";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -33,15 +34,18 @@ const slashCommands = [
     description: "Ping the bot",
   },
   {
-    name: "search",
+    name: "eldenring",
     description: "Search for an item in the database",
     options: [
       {
-        name: "game",
-        description: "The game to search in",
+        name: "source",
+        description: "The source to search from",
         type: ApplicationCommandOptionType.String,
         required: true,
-        choices: [{ name: "Elden Ring", value: "elden-ring" }],
+        choices: [
+          { name: "Elden Ring Fan API", value: "elden-ring-fan-api" },
+          { name: "Pure Elden Ring", value: "pure-elden-ring" },
+        ],
       },
       {
         name: "query",
@@ -127,20 +131,25 @@ function formatKeyValue(key: string, value: any, depth = 0): string {
 }
 
 // Initialize EldenRing API datasource once and reuse it
-const eldenRingApi = new EldenRingFanAPI();
+const eldenRingFanApi = new EldenRingFanAPI();
+
+// Initialize PureEldenRing API datasource once and reuse it
+const pureEldenRingApi = new PureEldenRing();
 
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user?.tag}!`);
 
   // Only populate the database if it hasn't been created yet
-  const dbPath = "eldenring.db";
-  let needInit = false;
+  const eldenRingFanApiDBPath = "eldenringfanapi.db";
+  let needInitEldenRingApi = false;
+  const pureEldenRingDBPath = "pureeldenring.db";
+  let needInitPureEldenRing = false;
 
-  if (!fs.existsSync(dbPath)) {
-    needInit = true;
+  if (!fs.existsSync(eldenRingFanApiDBPath)) {
+    needInitEldenRingApi = true;
   } else {
     try {
-      const db = new Database(dbPath, { readonly: true });
+      const db = new Database(eldenRingFanApiDBPath, { readonly: true });
       // Check if the items table exists and contains rows
       const stmt = db.prepare(
         "SELECT count(*) as cnt FROM sqlite_master WHERE type='table' AND name='items'"
@@ -156,19 +165,51 @@ client.once("ready", async () => {
       }
       db.close();
       if (!tableExists || rowCount === 0) {
-        needInit = true;
+        needInitEldenRingApi = true;
       }
     } catch (err: any) {
       console.error("Error reading existing database, will recreate:", err);
-      needInit = true;
+      needInitEldenRingApi = true;
     }
   }
 
-  if (needInit) {
+  if (!fs.existsSync(pureEldenRingDBPath)) {
+    needInitPureEldenRing = true;
+  } else {
+    try {
+      const db = new Database(pureEldenRingDBPath, { readonly: true });
+      const rowCount = db
+        .prepare("SELECT COUNT(*) as cnt FROM items")
+        .get() as {
+        cnt: number;
+      };
+      db.close();
+      if (rowCount.cnt === 0) {
+        needInitPureEldenRing = true;
+      }
+    } catch (err: any) {
+      console.error("Error reading existing database, will recreate:", err);
+      needInitPureEldenRing = true;
+    }
+  }
+
+  if (needInitEldenRingApi) {
     console.log(
       "Database missing or empty. Creating and populating it—this may take a while..."
     );
-    await eldenRingApi.createDatabase();
+    await eldenRingFanApi.createDatabase();
+    console.log("Database created.");
+  } else {
+    console.log(
+      "Database already initialized and populated. Skipping creation."
+    );
+  }
+
+  if (needInitPureEldenRing) {
+    console.log(
+      "Database missing or empty. Creating and populating it—this may take a while..."
+    );
+    await pureEldenRingApi.createDatabase();
     console.log("Database created.");
   } else {
     console.log(
@@ -189,18 +230,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (command.name === "ping") {
       await interaction.reply("Pong!");
     }
-    if (command.name === "search") {
+    if (command.name === "eldenring") {
       if (!interaction.isChatInputCommand()) return;
-      const game = interaction.options.getString("game");
+      const source = interaction.options.getString("source");
       const query = interaction.options.getString("query");
 
-      if (!game || !query) {
-        await interaction.reply("Please provide a game and a query");
+      if (!source || !query) {
+        await interaction.reply("Please provide a source and a query");
         return;
       }
 
-      if (game === "elden-ring") {
-        const result = await eldenRingApi.search(query);
+      if (source === "elden-ring-fan-api") {
+        const result = await eldenRingFanApi.search(query);
+        const formattedDetails = Object.entries(result)
+          .filter(
+            ([key, _]) =>
+              key !== "name" && key !== "description" && key !== "image"
+          )
+          .map(([key, value]) => formatKeyValue(key, value))
+          .filter(Boolean)
+          .join("\n");
+
+        const embed = new EmbedBuilder()
+          .setColor(0x6f11db)
+          .setTitle(result.name)
+          .setDescription(`${result.description}\n\n${formattedDetails}`)
+          .setImage(result.image)
+          .setFooter({ text: "Merlin go brrr" });
+        await interaction.reply({ embeds: [embed] });
+      } else if (source === "pure-elden-ring") {
+        const result = await pureEldenRingApi.search(query);
         const formattedDetails = Object.entries(result)
           .filter(
             ([key, _]) =>
